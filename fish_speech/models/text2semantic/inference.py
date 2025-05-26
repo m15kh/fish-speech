@@ -6,7 +6,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
-
+import time 
 import click
 import numpy as np
 import torch
@@ -997,13 +997,14 @@ def launch_thread_safe_queue_agent(
     return input_queue, tokenizer, config
 
 
-@click.command()
+# @click.command()
 @click.option(
     "--text",
     type=str,
     default="你说的对, 但是原神是一款由米哈游自主研发的开放世界手游.",
 )
 @click.option("--prompt-text", type=str, default=None, multiple=True)
+
 @click.option(
     "--prompt-tokens",
     type=click.Path(path_type=Path, exists=True),
@@ -1044,6 +1045,9 @@ def main(
     iterative_prompt: bool,
     chunk_length: int,
     output_dir: Path,
+    model,
+    decode_one_token
+    
 ) -> None:
     os.makedirs(output_dir, exist_ok=True)
     precision = torch.half if half else torch.bfloat16
@@ -1055,17 +1059,17 @@ def main(
 
     logger.info("Loading model ...")
     t0 = time.time()
-    model, decode_one_token = load_model(
-        checkpoint_path, device, precision, compile=compile
-    )
-    with torch.device(device):
-        model.setup_caches(
-            max_batch_size=1,
-            max_seq_len=model.config.max_seq_len,
-            dtype=next(model.parameters()).dtype,
-        )
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
+    # model, decode_one_token = load_model(
+    #     checkpoint_path, device, precision, compile=compile
+    # )
+    # with torch.device(device):
+    #     model.setup_caches(
+    #         max_batch_size=1,
+    #         max_seq_len=model.config.max_seq_len,
+    #         dtype=next(model.parameters()).dtype,
+    #     )
+    # if torch.cuda.is_available():
+    #     torch.cuda.synchronize()
 
     logger.info(f"Time to load model: {time.time() - t0:.02f} seconds")
 
@@ -1077,6 +1081,8 @@ def main(
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
 
+
+    start_time = time.time()  # Start timing
     generator = generate_long(
         model=model,
         device=device,
@@ -1093,6 +1099,8 @@ def main(
         prompt_text=prompt_text,
         prompt_tokens=prompt_tokens,
     )
+    end_time = time.time()  # End timing
+    logger.info(f"Time taken for generation: {end_time - start_time:.2f} seconds")
 
     idx = 0
     codes = []
@@ -1112,6 +1120,15 @@ def main(
         else:
             logger.error(f"Error: {response}")
 
-
-if __name__ == "__main__":
-    main()
+            if __name__ == "__main__":
+                start_time = time.time()
+                main()
+                end_time = time.time()
+                logger.info(f"Total execution time: {end_time - start_time:.2f} seconds")
+           
+    logger.info("------Generation completed.----")
+    if codes:
+        return torch.cat(codes, dim=1).cpu().numpy()
+    else:
+        logger.warning("No tokens were generated. Returning an empty result.")
+        return None

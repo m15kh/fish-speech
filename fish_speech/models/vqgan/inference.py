@@ -11,7 +11,7 @@ from hydra import compose, initialize
 from hydra.utils import instantiate
 from loguru import logger
 from omegaconf import OmegaConf
-
+import time
 pyrootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from fish_speech.utils.file import AUDIO_EXTENSIONS
@@ -48,7 +48,7 @@ def load_model(config_name, checkpoint_path, device="cuda"):
 
 
 @torch.no_grad()
-@click.command()
+# @click.command()
 @click.option(
     "--input-path",
     "-i",
@@ -68,9 +68,9 @@ def load_model(config_name, checkpoint_path, device="cuda"):
     "-d",
     default="cuda",
 )
-def main(input_path, output_path, config_name, checkpoint_path, device):
-    model = load_model(config_name, checkpoint_path, device=device)
-
+def main(input_path, output_path, config_name, checkpoint_path, device, model):
+    
+    #model = load_model(config_name, checkpoint_path, device=device) #@m15kh comment
     if input_path.suffix in AUDIO_EXTENSIONS:
         logger.info(f"Processing in-place reconstruction of {input_path}")
 
@@ -95,6 +95,7 @@ def main(input_path, output_path, config_name, checkpoint_path, device):
 
         # Save indices
         np.save(output_path.with_suffix(".npy"), indices.cpu().numpy())
+        
     elif input_path.suffix == ".npy":
         logger.info(f"Processing precomputed indices from {input_path}")
         indices = np.load(input_path)
@@ -113,11 +114,17 @@ def main(input_path, output_path, config_name, checkpoint_path, device):
     logger.info(
         f"Generated audio of shape {fake_audios.shape}, equivalent to {audio_time:.2f} seconds from {indices.shape[1]} features, features/second: {indices.shape[1] / audio_time:.2f}"
     )
-
-    # Save audio
-    fake_audio = fake_audios[0, 0].float().cpu().numpy()
-    sf.write(output_path, fake_audio, model.spec_transform.sample_rate)
-    logger.info(f"Saved audio to {output_path}")
+    # @m15kh comment save reference audio
+    if output_path.stem != "clone":
+        # Save audio
+        fake_audio = fake_audios[0, 0].float().cpu().numpy()
+        time_save = time.time()
+        sf.write(output_path, fake_audio, model.spec_transform.sample_rate)
+        time_save = time.time() - time_save
+        logger.info(f"Saved audio in {time_save:.2f} seconds to {output_path}")
+        logger.info(f"Saved audio to {output_path}")
+    else:
+        logger.info("Output name is 'clone', skipping save.")
 
 
 if __name__ == "__main__":
